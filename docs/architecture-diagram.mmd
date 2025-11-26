@@ -1,0 +1,77 @@
+graph TB
+    subgraph "Frontend Layer"
+        UI[React UI]
+        IDE[Monaco Editor]
+        Chat[Chat Interface]
+        AntiCheat[Anti-Cheat Events]
+    end
+    
+    subgraph "Backend API Layer"
+        API[FastAPI REST API]
+        Auth[Auth Service]
+        Interview[Interview Service]
+        TaskGen[Task Generator]
+        Report[Report Service]
+    end
+    
+    subgraph "LLM Layer"
+        LLMClient[LLM Client]
+        Interviewer[AI Interviewer]
+        CodeAnalyzer[Code Analyzer]
+        PromptTemplates[Prompt Templates]
+    end
+    
+    subgraph "Runner Layer"
+        RunnerAPI[Runner API]
+        DockerEngine[Docker Engine]
+        ContainerPool[Container Pool]
+        TestRunner[Test Runner]
+    end
+    
+    subgraph "Storage Layer"
+        DB[(PostgreSQL)]
+        Cache[(Redis Cache)]
+        FileStorage[File Storage]
+    end
+    
+    subgraph "External Services"
+        Scibox[Scibox LLM API]
+    end
+    
+    UI --> API
+    IDE --> API
+    Chat --> API
+    AntiCheat --> API
+    
+    API --> Auth
+    API --> Interview
+    API --> TaskGen
+    API --> Report
+    
+    Interview --> LLMClient
+    TaskGen --> LLMClient
+    Report --> LLMClient
+    
+    LLMClient --> Scibox
+    Interview --> Interviewer
+    Interview --> CodeAnalyzer
+    Interviewer --> PromptTemplates
+    CodeAnalyzer --> PromptTemplates
+    
+    Interview --> RunnerAPI
+    RunnerAPI --> DockerEngine
+    DockerEngine --> ContainerPool
+    RunnerAPI --> TestRunner
+    
+    API --> DB
+    API --> Cache
+    RunnerAPI --> FileStorage
+    
+    Interview --> AntiCheat
+    
+    style UI fill:#e1f5ff
+    style API fill:#fff4e1
+    style LLMClient fill:#ffe1f5
+    style RunnerAPI fill:#e1ffe1
+    style DB fill:#f5e1ff
+

@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: vibecode
+      POSTGRES_PASSWORD: vibecode
+      POSTGRES_DB: vibecode_jam
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://vibecode:vibecode@db:5432/vibecode_jam
+      SCIBOX_API_KEY: ${SCIBOX_API_KEY}
+      RUNNER_URL: http://runner:8001
+    depends_on:
+      - db
+      - runner
+    volumes:
+      - ./backend:/app
+
+  runner:
+    build: ./runner
+    ports:
+      - "8001:8001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./runner:/app
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8000/api
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+
