@@ -11,13 +11,22 @@ from app.models.schemas import (
 
 
 class EnumToLowercaseString(TypeDecorator):
-    """TypeDecorator для автоматической конвертации enum в lowercase строку"""
-    impl = String
+    """TypeDecorator для автоматической конвертации enum в lowercase строку с поддержкой PostgreSQL enum"""
+    impl = SQLEnum
     cache_ok = True
     
-    def __init__(self, enum_class, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, enum_class, length=None, *args, **kwargs):
+        # Используем SQLEnum с native_enum=False для PostgreSQL
         self.enum_class = enum_class
+        self.impl = SQLEnum(
+            enum_class,
+            native_enum=False,
+            values_callable=lambda x: [e.value.lower() for e in x],
+            length=length,
+            *args,
+            **kwargs
+        )
+        super().__init__(*args, **kwargs)
     
     def process_bind_param(self, value, dialect):
         """Конвертируем enum в lowercase строку при сохранении в БД"""
@@ -37,6 +46,10 @@ class EnumToLowercaseString(TypeDecorator):
             return self.enum_class(value.lower())
         except (ValueError, AttributeError):
             return value
+    
+    def load_dialect_impl(self, dialect):
+        """Используем SQLEnum для PostgreSQL с правильным кастингом"""
+        return self.impl
 
 
 def generate_uuid():

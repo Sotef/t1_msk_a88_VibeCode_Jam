@@ -2,7 +2,8 @@ from datetime import datetime
 import json
 import logging
 import random
-from typing import Dict
+from typing import Dict, Optional
+import numpy as np
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -131,8 +132,14 @@ async def generate_task(
                 response_language=interview.task_language
             )
         else:
-            # Выбираем задачу (можно добавить логику выбора по эмбеддингам)
-            bank_task = random.choice(available_tasks)
+            # Выбираем задачу с использованием семантического поиска по эмбеддингам
+            bank_task = await _select_task_by_similarity(
+                available_tasks=available_tasks,
+                interview=interview,
+                task_number=request.task_number,
+                previous_performance=request.previous_performance,
+                scibox_client=scibox_client
+            )
             
             # Обновляем счетчик использования
             bank_task.times_used = (bank_task.times_used or 0) + 1
@@ -386,8 +393,10 @@ async def run_tests(
         interview = interview_result.scalar_one_or_none()
         
         # Генерируем фидбэк от LLM о том, что можно улучшить (но не как)
+        # Если код неверный, фидбэк засчитывается как подсказка
         feedback = None
-        if execution_result and interview:
+        code_is_incorrect = execution_result and not execution_result.get("success")
+        if code_is_incorrect and interview:
             try:
                 feedback = await scibox_client.generate_test_feedback(
                     code=request.code,
@@ -396,6 +405,11 @@ async def run_tests(
                     language=request.language.value,
                     response_language=interview.task_language
                 )
+                # Если код неверный и получен фидбэк, засчитываем как подсказку
+                if feedback:
+                    task.hints_used = (task.hints_used or 0) + 1
+                    interview.hints_used = (interview.hints_used or 0) + 1
+                    logging.info(f"Test feedback provided for incorrect code, counted as hint. Task hints: {task.hints_used}, Interview hints: {interview.hints_used}")
             except Exception as e:
                 logging.warning(f"Failed to generate test feedback: {e}")
                 # Продолжаем без фидбэка - это не критично
@@ -1000,3 +1014,85 @@ def _localized_message(key: str, lang: str) -> str:
     }
     lang = lang or "en"
     return translations.get(key, {}).get(lang, translations.get(key, {}).get("en", ""))
+
+
+async def _select_task_by_similarity(
+    available_tasks: list,
+    interview: Interview,
+    task_number: int,
+    previous_performance: Optional[float],
+    scibox_client
+) -> TaskBank:
+    """
+    Выбирает задачу из банка на основе семантического поиска по эмбеддингам.
+    Если эмбеддинги недоступны или задачи не имеют эмбеддингов, использует случайный выбор.
+    """
+    if not available_tasks:
+        raise ValueError("No available tasks")
+    
+    # Фильтруем задачи с эмбеддингами
+    tasks_with_embeddings = [t for t in available_tasks if t.embedding]
+    
+    # Если нет задач с эмбеддингами, используем случайный выбор
+    if not tasks_with_embeddings:
+        return random.choice(available_tasks)
+    
+    # Генерируем контекстный запрос для поиска подходящей задачи
+    # Учитываем направление, сложность, номер задачи и производительность
+    context_query = f"{interview.direction} {interview.difficulty.value} task {task_number}"
+    if previous_performance is not None:
+        if previous_performance > 80:
+            context_query += " advanced challenging"
+        elif previous_performance < 40:
+            context_query += " basic fundamental"
+        else:
+            context_query += " intermediate"
+    
+    try:
+        # Генерируем эмбеддинг для контекстного запроса
+        query_embeddings = await scibox_client.get_embeddings([context_query])
+        if not query_embeddings or not query_embeddings[0]:
+            # Если не удалось получить эмбеддинг, используем случайный выбор
+            return random.choice(tasks_with_embeddings)
+        
+        query_embedding = query_embeddings[0]
+        
+        # Вычисляем cosine similarity для каждой задачи
+        best_task = None
+        best_similarity = -1.0
+        
+        for task in tasks_with_embeddings:
+            if not task.embedding:
+                continue
+            
+            # Вычисляем cosine similarity
+            task_emb = np.array(task.embedding)
+            query_emb = np.array(query_embedding)
+            
+            # Нормализуем векторы
+            task_norm = np.linalg.norm(task_emb)
+            query_norm = np.linalg.norm(query_emb)
+            
+            if task_norm == 0 or query_norm == 0:
+                continue
+            
+            similarity = np.dot(task_emb, query_emb) / (task_norm * query_norm)
+            
+            # Учитываем частоту использования (меньше использованных задач предпочтительнее)
+            usage_penalty = (task.times_used or 0) * 0.01  # Небольшой штраф за использование
+            adjusted_similarity = similarity - usage_penalty
+            
+            if adjusted_similarity > best_similarity:
+                best_similarity = adjusted_similarity
+                best_task = task
+        
+        # Если нашли задачу с хорошей схожестью, возвращаем её
+        if best_task and best_similarity > 0.3:  # Порог схожести
+            return best_task
+        
+        # Иначе выбираем случайную из задач с эмбеддингами
+        return random.choice(tasks_with_embeddings)
+        
+    except Exception as e:
+        logging.warning(f"Error in semantic task selection: {e}, falling back to random choice")
+        return random.choice(available_tasks)
