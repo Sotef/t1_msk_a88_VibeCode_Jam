@@ -62,11 +62,17 @@ export function TaskPanel({ task, taskNumber, totalTasks, loading }: TaskPanelPr
 
       <CardContent className="flex-1 overflow-auto space-y-4">
         {showSkeleton ? (
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-16 w-full" />
+          <div className="space-y-4">
+            <div className="text-center py-8">
+              <p className="text-sm text-muted-foreground mb-2">Загрузка задачи...</p>
+              <p className="text-xs text-muted-foreground italic">Пока задача загружается, пообщайтесь с интервьюером</p>
+            </div>
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           </div>
         ) : (
           <>

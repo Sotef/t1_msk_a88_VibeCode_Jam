@@ -9,6 +9,26 @@ import { ArrowLeft } from "lucide-react"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
+// Функция для перевода типов событий античита на русский
+function getAntiCheatEventTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    "tab_switch": "Переключение вкладки",
+    "copy_paste": "Копирование/вставка",
+    "devtools_open": "Открытие DevTools",
+    "focus_loss": "Потеря фокуса",
+    "large_paste": "Большая вставка",
+    "suspicious_typing": "Подозрительный паттерн печати",
+    "code_change_timestamp": "Изменение кода",
+    "large_code_change": "Большое изменение кода",
+    "external_service_request": "Запрос к внешнему сервису",
+    "ai_service_request": "Запрос к AI-сервису",
+    "call_service_request": "Запрос к сервису звонков",
+    "frequent_paste": "Частая вставка",
+    "code_paste": "Вставка кода",
+  }
+  return labels[type] || type
+}
+
 export default function InterviewDetailsPage() {
   const params = useParams()
   const router = useRouter()
@@ -120,7 +140,7 @@ export default function InterviewDetailsPage() {
               <div className="space-y-2">
                 {interview.anti_cheat_events.map((event: any, idx: number) => (
                   <div key={idx} className="border rounded p-2 text-sm">
-                    <div><strong>Тип:</strong> {event.type}</div>
+                    <div><strong>Тип:</strong> {getAntiCheatEventTypeLabel(event.type)} <span className="text-muted-foreground text-xs">({event.type})</span></div>
                     <div><strong>Серьезность:</strong> {event.severity}</div>
                     <div><strong>Время:</strong> {new Date(event.timestamp).toLocaleString("ru")}</div>
                     {event.details && <div><strong>Детали:</strong> {JSON.stringify(event.details)}</div>}

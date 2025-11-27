@@ -204,7 +204,7 @@ async def generate_task(
         examples=task_data.get("examples", []),
         constraints=task_data.get("constraints", []),
         test_cases=task_data.get("test_cases", []),
-        starter_code=task_data.get("starter_code", {}),
+        starter_code=_normalize_starter_code(task_data.get("starter_code"), interview.language.value),
         started_at=datetime.utcnow()
     )
     
@@ -954,6 +954,17 @@ async def get_status(interview_id: str, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logging.error(f"Error in get_status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def _normalize_starter_code(starter_code: any, language: str) -> dict:
+    """Нормализует starter_code: если строка, преобразует в словарь {language: code}"""
+    if not starter_code:
+        return {}
+    if isinstance(starter_code, str):
+        return {language: starter_code}
+    if isinstance(starter_code, dict):
+        return starter_code
+    return {}
 
 
 def _normalize_code(code: str) -> str:

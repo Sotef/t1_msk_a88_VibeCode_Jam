@@ -178,10 +178,14 @@ class SciboxClient:
         content = self._filter_reasoning_tags(content)
         parsed = self._extract_json_payload(content)
         if parsed:
+            # Нормализуем starter_code: если это строка, преобразуем в словарь {language: code}
+            if isinstance(parsed.get("starter_code"), str):
+                starter_code_str = parsed["starter_code"]
+                parsed["starter_code"] = {language: starter_code_str}
             return parsed
         
         # Попытка извлечь хотя бы базовые поля из обрезанного JSON
-        fallback_task = self._extract_partial_task(content, task_number)
+        fallback_task = self._extract_partial_task(content, task_number, language)
         if fallback_task:
             logging.warning(
                 f"Using partial task data due to JSON parsing error. "
@@ -795,7 +799,7 @@ class SciboxClient:
         # Не трогаем пробелы - они уже корректные от API
         return text
 
-    def _extract_partial_task(self, raw: str, task_number: int) -> Optional[dict]:
+    def _extract_partial_task(self, raw: str, task_number: int, language: str = "python") -> Optional[dict]:
         """Извлекает хотя бы базовые поля задачи из обрезанного JSON"""
         import re
         try:
@@ -870,9 +874,8 @@ class SciboxClient:
             starter_code_match = re.search(r'"starter_code"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"', raw, re.DOTALL)
             if starter_code_match:
                 code_str = starter_code_match.group(1).replace('\\"', '"').replace('\\n', '\n')
-                # Определяем язык по task_type или используем python по умолчанию
-                default_lang = "python"  # Можно улучшить определение языка
-                starter_code = {default_lang: code_str}
+                # Используем переданный язык
+                starter_code = {language: code_str}
             
             return {
                 "title": title,

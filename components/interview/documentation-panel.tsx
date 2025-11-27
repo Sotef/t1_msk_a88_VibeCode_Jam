@@ -180,6 +180,7 @@ export function DocumentationPanel({ language, isOpen, onClose }: DocumentationP
             </div>
           </ScrollArea>
         </div>
+      </div>
         </div>
       </div>
     </>
