@@ -158,8 +158,10 @@ export function InterviewScreen({ interviewData }: InterviewScreenProps) {
     return <FeedbackReport feedback={feedback} />
   }
 
+  // Панель задачи показывает загрузку только при генерации новой задачи
   const taskPanelLoading = !currentTask || loadingAction === "start" || loadingAction === "nextTask"
-  const editorLoading = loadingAction === "submit" || loadingAction === "tests" || loadingAction === "hint"
+  // Редактор показывает загрузку только при отправке/тестах/подсказке, НЕ при генерации задачи
+  const editorLoading = (loadingAction === "submit" || loadingAction === "tests" || loadingAction === "hint") && isLoading
 
   return (
     <div className="h-screen flex flex-col bg-background">

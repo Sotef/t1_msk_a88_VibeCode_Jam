@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Play, Send, Lightbulb, Loader2, Terminal } from "lucide-react"
+import { Play, Send, Lightbulb, Loader2, Terminal, BookOpen } from "lucide-react"
 import type { ProgrammingLanguage, ExecutionResult } from "@/lib/api-client"
+import { getDocumentation, formatDocAsMarkdown } from "@/lib/documentation"
+import { DocumentationPanel } from "./documentation-panel"
 
 interface CodeEditorProps {
   code: string
@@ -50,6 +52,7 @@ export function CodeEditor({
   const [isRunning, setIsRunning] = useState(false)
   const [localTestResults, setLocalTestResults] = useState<ExecutionResult | null>(null)
   const [isThemeReady, setIsThemeReady] = useState(false)
+  const [isDocPanelOpen, setIsDocPanelOpen] = useState(false)
   const previousCodeRef = useRef<string>(code)
 
   // Определяем тему ДО загрузки Editor с обработкой ошибок и таймаутом
@@ -310,6 +313,109 @@ export function CodeEditor({
       })
     }
 
+    // Регистрируем Hover Provider и Signature Help Provider
+    const langMap: Record<ProgrammingLanguage, "python" | "javascript" | "cpp"> = {
+      python: "python",
+      javascript: "javascript",
+      cpp: "cpp",
+    }
+    const docLang = langMap[language]
+
+    // Hover Provider
+    monaco.languages.registerHoverProvider(languageMap[language], {
+      provideHover: (model, position) => {
+        const word = model.getWordAtPosition(position)
+        if (!word) return null
+
+        // Пробуем найти документацию по имени функции
+        let doc = getDocumentation(docLang, word.word)
+        
+        // Для JavaScript проверяем методы с точками (например, Array.map)
+        if (!doc && language === "javascript") {
+          const lineText = model.getLineContent(position.lineNumber)
+          const beforeWord = lineText.substring(0, word.startColumn - 1).trim()
+          
+          // Проверяем паттерны: Array.method, Object.method, JSON.method
+          const methodMatch = beforeWord.match(/(Array|Object|JSON)\.$/)
+          if (methodMatch) {
+            const fullName = `${methodMatch[1]}.${word.word}`
+            doc = getDocumentation(docLang, fullName)
+            if (doc) {
+              const markdown = formatDocAsMarkdown(doc)
+              return {
+                range: new monaco.Range(
+                  position.lineNumber,
+                  word.startColumn,
+                  position.lineNumber,
+                  word.endColumn
+                ),
+                contents: [{ value: markdown }],
+              }
+            }
+          }
+        }
+
+        if (doc) {
+          const markdown = formatDocAsMarkdown(doc)
+          return {
+            range: new monaco.Range(
+              position.lineNumber,
+              word.startColumn,
+              position.lineNumber,
+              word.endColumn
+            ),
+            contents: [{ value: markdown }],
+          }
+        }
+        return null
+      },
+    })
+
+    // Signature Help Provider
+    monaco.languages.registerSignatureHelpProvider(languageMap[language], {
+      signatureHelpTriggerCharacters: ["("],
+      provideSignatureHelp: (model, position) => {
+        const textUntilPosition = model.getValueInRange({
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column,
+        })
+
+        // Простой парсинг для определения функции
+        let match = textUntilPosition.match(/(\w+)\s*\($/)
+        let funcName = match ? match[1] : null
+        
+        // Для JavaScript проверяем методы с точками (например, Array.map(, Object.keys()
+        if (!funcName && language === "javascript") {
+          match = textUntilPosition.match(/(Array|Object|JSON)\.(\w+)\s*\($/)
+          if (match) {
+            funcName = `${match[1]}.${match[2]}`
+          }
+        }
+        
+        if (!funcName) return null
+
+        const doc = getDocumentation(docLang, funcName)
+        if (!doc) return null
+
+        const signatureInfo: monaco.languages.SignatureInformation = {
+          label: doc.signature,
+          documentation: { value: doc.description },
+          parameters: doc.parameters.map((param) => ({
+            label: `${param.name}: ${param.type}`,
+            documentation: param.description,
+          })),
+        }
+
+        return {
+          signatures: [signatureInfo],
+          activeSignature: 0,
+          activeParameter: 0,
+        }
+      },
+    })
+
     editor.onDidPaste((event) => {
       if (!onPaste) return
       const text = editor.getModel()?.getValueInRange(event.range)
@@ -341,9 +447,10 @@ export function CodeEditor({
 
   return (
     <div className="flex h-full flex-col bg-card rounded-lg border overflow-hidden relative">
+      {/* Визуальный индикатор загрузки - не блокирует редактирование */}
       {isBusy && (
-        <div className="absolute inset-0 z-10 bg-background/50 backdrop-blur-[1px] pointer-events-none">
-          <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-muted/40 to-transparent" />
+        <div className="absolute inset-0 z-10 bg-background/30 backdrop-blur-[1px] pointer-events-none">
+          <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-muted/20 to-transparent" />
         </div>
       )}
       <div className="flex items-center justify-between border-b px-4 py-2 bg-secondary/30">
@@ -359,6 +466,14 @@ export function CodeEditor({
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsDocPanelOpen(!isDocPanelOpen)}
+            title="Открыть документацию"
+          >
+            <BookOpen className="h-4 w-4" />
+          </Button>
           <Select value={language} disabled>
             <SelectTrigger className="w-32 h-8">
               <SelectValue />
@@ -373,6 +488,12 @@ export function CodeEditor({
       </div>
 
       <div className="relative flex-1">
+        {/* Панель документации */}
+        <DocumentationPanel
+          language={language}
+          isOpen={isDocPanelOpen}
+          onClose={() => setIsDocPanelOpen(false)}
+        />
         {!isThemeReady ? (
           <Skeleton className="h-full w-full" />
         ) : (
@@ -399,6 +520,7 @@ export function CodeEditor({
               scrollBeyondLastLine: false,
               tabSize: 4,
               fontLigatures: true,
+              readOnly: false, // Явно разрешаем редактирование
               // IntelliSense настройки
               quickSuggestions: {
                 other: true,
