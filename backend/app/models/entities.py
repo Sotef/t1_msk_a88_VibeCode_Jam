@@ -110,8 +110,8 @@ class InterviewTask(Base):
     # Task details
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
-    task_type = Column(SQLEnum(TaskType, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
-    difficulty = Column(SQLEnum(Difficulty, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    task_type = Column(EnumToLowercaseString(TaskType, 50), nullable=False)
+    difficulty = Column(EnumToLowercaseString(Difficulty, 20), nullable=False)
     examples = Column(JSON, nullable=True)
     constraints = Column(JSON, nullable=True)
     test_cases = Column(JSON, nullable=True)  # For algorithm tasks

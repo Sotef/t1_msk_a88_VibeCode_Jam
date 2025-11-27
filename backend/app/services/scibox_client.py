@@ -322,6 +322,60 @@ class SciboxClient:
         # Фильтруем reasoning теги из ответа
         return self._filter_reasoning_tags(content)
 
+    async def generate_test_feedback(
+        self,
+        code: str,
+        task: dict,
+        execution_result: dict,
+        language: str,
+        response_language: str | None = None,
+    ) -> str:
+        """Генерирует фидбэк от LLM о том, что можно улучшить в коде (но не как)"""
+        system_prompt = (
+            "You are a helpful code reviewer. After running tests, provide brief feedback about "
+            "what could be improved in the code, but DO NOT tell HOW to improve it.\n\n"
+            "IMPORTANT: Only mention WHAT needs improvement (e.g., 'Consider edge cases', "
+            "'Performance could be optimized'), but never provide the solution or implementation details.\n\n"
+            "Keep feedback concise (1-2 sentences max)."
+        )
+        system_prompt = self._append_language_instruction(system_prompt, response_language)
+        
+        test_status = "passed" if execution_result.get("success") else "failed"
+        test_info = ""
+        if execution_result.get("test_results"):
+            passed = sum(1 for t in execution_result["test_results"] if t.get("passed"))
+            total = len(execution_result["test_results"])
+            test_info = f"\nTests: {passed}/{total} passed."
+        if execution_result.get("error"):
+            test_info += f"\nError: {execution_result['error'][:200]}"
+        
+        user_prompt = (
+            f"Task: {task.get('title')}\n"
+            f"Code:\n```{language}\n{code}\n```\n"
+            f"Test status: {test_status}{test_info}\n\n"
+            "What could be improved? (Do not provide solutions)"
+        )
+        
+        response = await self.chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            model=settings.model_coder,
+            temperature=0.5,
+            max_tokens=128,
+            stream=False,
+            session_context={
+                "purpose": "test_feedback",
+                "task": task,
+                "language": language,
+                "task_language": response_language,
+            },
+        )
+        
+        content = response["choices"][0]["message"]["content"]
+        return self._filter_reasoning_tags(content)
+
     async def chat_softskills(
         self,
         messages: List[Message],

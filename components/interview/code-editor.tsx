@@ -610,6 +610,12 @@ export function CodeEditor({
                 {displayedResults.error && !displayedResults.test_results && (
                   <div className="text-red-400">{displayedResults.error}</div>
                 )}
+                {displayedResults.feedback && (
+                  <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded text-sm text-blue-300">
+                    <div className="font-semibold mb-1">💡 Что можно улучшить:</div>
+                    <div>{displayedResults.feedback}</div>
+                  </div>
+                )}
               </>
             )}
             {localTestResults && !displayedResults && (

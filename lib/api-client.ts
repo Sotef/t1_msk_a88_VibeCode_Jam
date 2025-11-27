@@ -16,6 +16,7 @@ export interface Task {
   constraints?: string[]
   time_limit_minutes: number
   starter_code?: Record<string, string>
+  total_tasks?: number  // Обновленное количество задач (адаптивное)
 }
 
 export interface ChatMessage {
@@ -62,6 +63,7 @@ export interface ExecutionResult {
   execution_time_ms: number
   memory_used_mb: number
   test_results?: TestResult[]
+  feedback?: string  // Фидбэк от LLM о том, что можно улучшить
 }
 
 export const apiClient = {

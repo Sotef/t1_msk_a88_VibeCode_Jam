@@ -120,6 +120,7 @@ class TaskResponse(BaseModel):
     constraints: Optional[List[str]] = None
     time_limit_minutes: int = 15
     starter_code: Optional[dict] = None  # {language: code}
+    total_tasks: Optional[int] = None  # Адаптивное количество задач
 
 
 class CodeExecutionResult(BaseModel):
@@ -129,6 +130,7 @@ class CodeExecutionResult(BaseModel):
     execution_time_ms: int = 0
     memory_used_mb: float = 0
     test_results: Optional[List[dict]] = None
+    feedback: Optional[str] = None  # Фидбэк от LLM о том, что можно улучшить
 
 
 class CodeEvaluationResult(BaseModel):

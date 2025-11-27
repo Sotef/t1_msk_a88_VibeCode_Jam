@@ -206,6 +206,9 @@ async def generate_task(
         f"has_starter_code={bool(task.starter_code)}"
     )
     
+    # Обновляем interview после возможного изменения total_tasks
+    await db.refresh(interview)
+    
     return TaskResponse(
         id=task.id,
         title=task.title,
@@ -215,7 +218,8 @@ async def generate_task(
         examples=task.examples or [],
         constraints=task.constraints,
         time_limit_minutes=15,
-        starter_code=task.starter_code
+        starter_code=task.starter_code,
+        total_tasks=interview.total_tasks  # Возвращаем обновленное количество задач
     )
 
 
@@ -374,12 +378,38 @@ async def run_tests(
             else:
                 task.execution_errors = (task.execution_errors or 0) + 1
         
+        # Получаем интервью для контекста
+        interview_result = await safe_db_operation(
+            lambda: db.execute(select(Interview).where(Interview.id == request.interview_id)),
+            "Failed to fetch interview"
+        )
+        interview = interview_result.scalar_one_or_none()
+        
+        # Генерируем фидбэк от LLM о том, что можно улучшить (но не как)
+        feedback = None
+        if execution_result and interview:
+            try:
+                feedback = await scibox_client.generate_test_feedback(
+                    code=request.code,
+                    task={"title": task.title, "description": task.description},
+                    execution_result=execution_result,
+                    language=request.language.value,
+                    response_language=interview.task_language
+                )
+            except Exception as e:
+                logging.warning(f"Failed to generate test feedback: {e}")
+                # Продолжаем без фидбэка - это не критично
+        
         await safe_db_operation(
             lambda: db.commit(),
             "Failed to commit test run"
         )
         
-        return execution_result
+        # Возвращаем результат с фидбэком
+        result = execution_result.copy() if execution_result else {}
+        if feedback:
+            result["feedback"] = feedback
+        return result
     except HTTPException:
         raise
     except Exception as e:

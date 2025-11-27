@@ -138,7 +138,9 @@ export function useInterview() {
     if (!interview) return null
 
     const nextNum = taskNumber + 1
-    if (nextNum > interview.total_tasks) {
+    // Убираем жесткую проверку - total_tasks может адаптивно изменяться
+    // Проверяем только максимальный лимит (8 задач)
+    if (nextNum > 8) {
       return null
     }
 
@@ -160,6 +162,10 @@ export function useInterview() {
         console.log("[use-interview] Setting next task")
         setCurrentTask(task)
         setTaskNumber(nextNum)
+        // Обновляем total_tasks если оно изменилось
+        if (task.total_tasks && task.total_tasks !== interview.total_tasks) {
+          setInterview({ ...interview, total_tasks: task.total_tasks })
+        }
         setCode(task.starter_code?.[interview.language] || getDefaultCode(interview.language))
         return task
       } else {
