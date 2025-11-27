@@ -34,10 +34,10 @@ class Interview(Base):
     candidate_name = Column(String(255), nullable=False)
     candidate_email = Column(String(255), nullable=False, index=True)
     direction = Column(String(50), nullable=False)  # Используем String вместо SQLEnum для совместимости с БД
-    language = Column(SQLEnum(ProgrammingLanguage), nullable=False)
+    language = Column(SQLEnum(ProgrammingLanguage, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
     task_language = Column(String(10), default="ru")
-    difficulty = Column(SQLEnum(Difficulty), nullable=False)
-    status = Column(SQLEnum(InterviewStatus), default=InterviewStatus.PENDING)
+    difficulty = Column(SQLEnum(Difficulty, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    status = Column(SQLEnum(InterviewStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), default=InterviewStatus.PENDING)
     
     # Scores
     overall_score = Column(Float, nullable=True)
@@ -81,8 +81,8 @@ class InterviewTask(Base):
     # Task details
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
-    task_type = Column(SQLEnum(TaskType), nullable=False)
-    difficulty = Column(SQLEnum(Difficulty), nullable=False)
+    task_type = Column(SQLEnum(TaskType, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    difficulty = Column(SQLEnum(Difficulty, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
     examples = Column(JSON, nullable=True)
     constraints = Column(JSON, nullable=True)
     test_cases = Column(JSON, nullable=True)  # For algorithm tasks
@@ -90,7 +90,7 @@ class InterviewTask(Base):
     
     # Submission
     submitted_code = Column(Text, nullable=True)
-    submission_language = Column(SQLEnum(ProgrammingLanguage), nullable=True)
+    submission_language = Column(SQLEnum(ProgrammingLanguage, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=True)
     
     # Evaluation
     score = Column(Float, nullable=True)
@@ -139,7 +139,7 @@ class AntiCheatEvent(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     interview_id = Column(String, ForeignKey("interviews.id"), nullable=False)
     
-    event_type = Column(SQLEnum(AntiCheatEventType), nullable=False)
+    event_type = Column(SQLEnum(AntiCheatEventType, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
     details = Column(JSON, nullable=True)
     severity = Column(String(20), default="low")  # low, medium, high, critical
     
@@ -222,7 +222,7 @@ class TaskBank(Base):
     # Metadata
     tags = Column(JSON, nullable=True)  # Теги для категоризации
     topic = Column(String(255), nullable=True)  # Тема задачи (алгоритмы, структуры данных и т.д.)
-    language = Column(SQLEnum(ProgrammingLanguage), nullable=True)  # Предпочтительный язык
+    language = Column(SQLEnum(ProgrammingLanguage, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=True)  # Предпочтительный язык
     
     # Usage tracking
     times_used = Column(Integer, default=0)  # Сколько раз использовалась

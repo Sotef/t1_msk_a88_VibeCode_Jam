@@ -42,15 +42,15 @@ async def start_interview(
     # Ensure Enum values are converted to strings for database storage
     direction_value = request.direction.value if isinstance(request.direction, InterviewDirection) else str(request.direction).lower()
     
-    # Для language и difficulty передаем Enum напрямую - SQLAlchemy сам конвертирует в значение через SQLEnum
+    # Явно используем .value для всех enum, чтобы гарантировать lowercase значения
     interview = Interview(
         candidate_name=request.candidate_name,
         candidate_email=request.candidate_email,
         direction=direction_value,  # Используем строку напрямую, т.к. в БД колонка String
-        language=request.language,  # Передаем Enum напрямую - SQLAlchemy конвертирует в значение
+        language=ProgrammingLanguage(request.language.value),  # Явно создаем enum из .value для гарантии lowercase
         task_language=request.task_language.value,
-        difficulty=request.difficulty,  # Передаем Enum напрямую - SQLAlchemy конвертирует в значение
-        status=InterviewStatus.IN_PROGRESS,
+        difficulty=Difficulty(request.difficulty.value),  # Явно создаем enum из .value для гарантии lowercase
+        status=InterviewStatus(InterviewStatus.IN_PROGRESS.value),  # Явно используем .value
         total_tasks=initial_task_count,
         use_task_bank=request.use_task_bank,
         started_at=datetime.utcnow()
@@ -178,14 +178,15 @@ async def generate_task(
                 "starter_code": {},
             }
     
-    # Create task in database
+    # Create task in database - явно используем .value для enum
+    task_type_value = str(task_data.get("task_type", "practical")).lower().strip()
     task = InterviewTask(
         interview_id=interview.id,
         task_number=request.task_number,
         title=task_data.get("title", f"Task {request.task_number}"),
         description=task_data.get("description", ""),
-        task_type=TaskType(task_data.get("task_type", "practical")),
-        difficulty=interview.difficulty,
+        task_type=TaskType(task_type_value),  # Нормализуем к lowercase
+        difficulty=Difficulty(interview.difficulty.value),  # Явно используем .value
         examples=task_data.get("examples", []),
         constraints=task_data.get("constraints", []),
         test_cases=task_data.get("test_cases", []),
@@ -237,8 +238,8 @@ async def submit_code(
         
         # Store submitted code
         task.submitted_code = request.code
-        # Убеждаемся, что передаем Enum объект, SQLAlchemy сам конвертирует через SQLEnum
-        task.submission_language = request.language
+        # Явно используем .value для гарантии lowercase
+        task.submission_language = ProgrammingLanguage(request.language.value)
         task.submitted_at = datetime.utcnow()
         task.submission_attempts = (task.submission_attempts or 0) + 1
         
