@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError, DBAPIError
 
-from app.models.database import get_db
+from app.models.database import get_db, safe_db_operation
 from app.models.schemas import (
     StartInterviewRequest, GenerateTaskRequest, SubmitCodeRequest,
     ChatMessageRequest, HintRequest, AntiCheatEventRequest,
@@ -27,22 +27,7 @@ from app.services.anti_cheat import anti_cheat_service
 router = APIRouter(prefix="/api/interview", tags=["interview"])
 
 # Helper function for safe DB operations
-async def safe_db_operation(operation, error_message="Database operation failed"):
-    """Safely execute database operations with error handling"""
-    try:
-        return await operation()
-    except (SQLAlchemyError, DBAPIError) as e:
-        logging.error(f"{error_message}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"{error_message}: {str(e)}"
-        )
-    except Exception as e:
-        logging.error(f"Unexpected error in {error_message}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unexpected error: {str(e)}"
-        )
+# safe_db_operation moved to app.models.database
 
 
 @router.post("/start")

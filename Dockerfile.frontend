@@ -4,26 +4,31 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
 
+# Слой для зависимостей - кеш инвалидируется только при изменении package.json или pnpm-lock.yaml
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --no-frozen-lockfile
 
+# Сборка: код НЕ кешируется, всегда копируется заново
 FROM base AS builder
 WORKDIR /app
+# Копируем node_modules из кешированного слоя (только библиотеки)
 COPY --from=deps /app/node_modules ./node_modules
+# КОД НЕ КЕШИРУЕТСЯ: копируем весь код всегда одним слоем
 COPY . .
 RUN pnpm run build
 
+# Финальный слой - только production зависимости и артефакты сборки
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# Create public directory if it doesn't exist, then copy if it does
 RUN mkdir -p ./public
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
+# Production зависимости кешируются отдельно
 RUN pnpm install --no-frozen-lockfile --prod
 EXPOSE 3000
 CMD ["pnpm", "start", "--hostname", "0.0.0.0", "--port", "3000"]

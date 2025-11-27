@@ -1,5 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.exc import SQLAlchemyError, DBAPIError
+from fastapi import HTTPException
+import logging
 from app.config import get_settings
 
 settings = get_settings()
@@ -21,6 +24,24 @@ async def get_db() -> AsyncSession:
             yield session
         finally:
             await session.close()
+
+
+async def safe_db_operation(operation, error_message="Database operation failed"):
+    """Safely execute database operations with error handling"""
+    try:
+        return await operation()
+    except (SQLAlchemyError, DBAPIError) as e:
+        logging.error(f"{error_message}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"{error_message}: {str(e)}"
+        )
+    except Exception as e:
+        logging.error(f"Unexpected error in {error_message}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 
 async def init_db():

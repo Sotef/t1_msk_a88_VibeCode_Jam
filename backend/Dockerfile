@@ -5,13 +5,20 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Установка системных зависимостей (кешируется отдельно)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends docker-cli && \
-    rm -rf /var/lib/apt/lists/* && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    rm -rf /var/lib/apt/lists/*
 
+# Обновление pip (кешируется отдельно)
+RUN pip install --no-cache-dir --upgrade pip
+
+# КЕШИРОВАНИЕ ТОЛЬКО БИБЛИОТЕК: копируем requirements.txt и устанавливаем зависимости
+# Этот слой кешируется и пересобирается ТОЛЬКО при изменении requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# КОД НЕ КЕШИРУЕТСЯ: копируем код всегда (кеш не используется)
 COPY . .
 
 EXPOSE 8000

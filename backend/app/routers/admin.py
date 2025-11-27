@@ -7,6 +7,7 @@ from datetime import datetime
 import logging
 
 from app.models.database import get_db
+from app.models.database import safe_db_operation
 from app.models.entities import Admin, Interview, InterviewTask, AntiCheatEvent, TaskBank
 from app.models.schemas import InterviewStatus, TaskType, Difficulty, InterviewDirection, ProgrammingLanguage
 from fastapi import UploadFile, File, Form
@@ -243,27 +244,42 @@ async def get_interview_details(
     db: AsyncSession = Depends(get_db)
 ):
     """Get detailed interview report"""
-    result = await db.execute(select(Interview).where(Interview.id == interview_id))
-    interview = result.scalar_one_or_none()
-    
-    if not interview:
-        raise HTTPException(status_code=404, detail="Interview not found")
-    
-    # Get tasks
-    tasks_result = await db.execute(
-        select(InterviewTask)
-        .where(InterviewTask.interview_id == interview.id)
-        .order_by(InterviewTask.task_number)
-    )
-    tasks = tasks_result.scalars().all()
-    
-    # Get anti-cheat events
-    events_result = await db.execute(
-        select(AntiCheatEvent)
-        .where(AntiCheatEvent.interview_id == interview.id)
-        .order_by(AntiCheatEvent.created_at)
-    )
-    events = events_result.scalars().all()
+    try:
+        result = await safe_db_operation(
+            lambda: db.execute(select(Interview).where(Interview.id == interview_id)),
+            "Failed to fetch interview"
+        )
+        interview = result.scalar_one_or_none()
+        
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
+        
+        # Get tasks
+        tasks_result = await safe_db_operation(
+            lambda: db.execute(
+                select(InterviewTask)
+                .where(InterviewTask.interview_id == interview.id)
+                .order_by(InterviewTask.task_number)
+            ),
+            "Failed to fetch tasks"
+        )
+        tasks = tasks_result.scalars().all()
+        
+        # Get anti-cheat events
+        events_result = await safe_db_operation(
+            lambda: db.execute(
+                select(AntiCheatEvent)
+                .where(AntiCheatEvent.interview_id == interview.id)
+                .order_by(AntiCheatEvent.created_at)
+            ),
+            "Failed to fetch anti-cheat events"
+        )
+        events = events_result.scalars().all()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error in get_interview_details: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     
     return {
         "interview": {
@@ -401,13 +417,18 @@ async def upload_task_bank(
     saved_count = 0
     
     for task_data in tasks:
-        # Create task in bank
+        # Normalize enum values to lowercase
+        task_type_normalized = str(task_data.get("task_type", "algorithm")).lower().strip()
+        difficulty_normalized = str(task_data.get("difficulty", "medium")).lower().strip()
+        direction_normalized = str(task_data.get("direction", "backend")).lower().strip()
+        
+        # Create task in bank - используем нормализованные значения напрямую
         task = TaskBank(
             title=task_data["title"],
             description=task_data["description"],
-            task_type=TaskType(task_data["task_type"]),
-            difficulty=Difficulty(task_data["difficulty"]),
-            direction=InterviewDirection(task_data["direction"]),
+            task_type=TaskType(task_type_normalized),  # Уже нормализовано к lowercase
+            difficulty=Difficulty(difficulty_normalized),  # Уже нормализовано к lowercase
+            direction=InterviewDirection(direction_normalized),  # Уже нормализовано к lowercase
             examples=task_data.get("examples"),
             constraints=task_data.get("constraints"),
             test_cases=task_data.get("test_cases"),
@@ -451,11 +472,14 @@ async def list_task_bank(
     query = select(TaskBank)
     
     if difficulty:
-        query = query.where(TaskBank.difficulty == Difficulty(difficulty))
+        difficulty_normalized = difficulty.lower().strip()
+        query = query.where(TaskBank.difficulty == Difficulty(difficulty_normalized))
     if direction:
-        query = query.where(TaskBank.direction == InterviewDirection(direction))
+        direction_normalized = direction.lower().strip()
+        query = query.where(TaskBank.direction == InterviewDirection(direction_normalized))
     if task_type:
-        query = query.where(TaskBank.task_type == TaskType(task_type))
+        task_type_normalized = task_type.lower().strip()
+        query = query.where(TaskBank.task_type == TaskType(task_type_normalized))
     
     query = query.order_by(TaskBank.created_at.desc())
     query = query.offset((page - 1) * limit).limit(limit)
@@ -466,11 +490,14 @@ async def list_task_bank(
     # Get total count
     count_query = select(func.count(TaskBank.id))
     if difficulty:
-        count_query = count_query.where(TaskBank.difficulty == Difficulty(difficulty))
+        difficulty_normalized = difficulty.lower().strip()
+        count_query = count_query.where(TaskBank.difficulty == Difficulty(difficulty_normalized))
     if direction:
-        count_query = count_query.where(TaskBank.direction == InterviewDirection(direction))
+        direction_normalized = direction.lower().strip()
+        count_query = count_query.where(TaskBank.direction == InterviewDirection(direction_normalized))
     if task_type:
-        count_query = count_query.where(TaskBank.task_type == TaskType(task_type))
+        task_type_normalized = task_type.lower().strip()
+        count_query = count_query.where(TaskBank.task_type == TaskType(task_type_normalized))
     
     count_result = await db.execute(count_query)
     total = count_result.scalar()
@@ -518,9 +545,14 @@ async def add_single_task(
 ):
     """Add a single task to bank (3 required fields: description, difficulty, task_type)"""
     try:
+        # Normalize input values to lowercase for enum matching
+        task_type_normalized = task_type.lower().strip()
+        difficulty_normalized = difficulty.lower().strip()
+        direction_normalized = direction.lower().strip() if direction else "backend"
+        
         # Validate and parse enums
         try:
-            task_type_enum = TaskType(task_type)
+            task_type_enum = TaskType(task_type_normalized)
         except ValueError:
             raise HTTPException(
                 status_code=400,
@@ -528,7 +560,7 @@ async def add_single_task(
             )
         
         try:
-            difficulty_enum = Difficulty(difficulty)
+            difficulty_enum = Difficulty(difficulty_normalized)
         except ValueError:
             raise HTTPException(
                 status_code=400,
@@ -536,7 +568,7 @@ async def add_single_task(
             )
         
         try:
-            direction_enum = InterviewDirection(direction) if direction else InterviewDirection.BACKEND
+            direction_enum = InterviewDirection(direction_normalized) if direction else InterviewDirection.BACKEND
         except ValueError:
             raise HTTPException(
                 status_code=400,
@@ -604,13 +636,14 @@ async def add_single_task(
                     detail=f"Invalid JSON in tags field: {str(e)}"
                 )
         
-        # Create task
+        # Create task - enum уже нормализованы к lowercase, SQLAlchemy должен использовать .value автоматически
+        # Но для надежности используем нормализованные строки напрямую
         task = TaskBank(
             title=title or f"Задача {datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
             description=description,
-            task_type=task_type_enum,
-            difficulty=difficulty_enum,
-            direction=direction_enum,
+            task_type=task_type_enum,  # Enum объект, SQLAlchemy должен использовать .value
+            difficulty=difficulty_enum,  # Enum объект, SQLAlchemy должен использовать .value
+            direction=direction_enum,  # Enum объект, SQLAlchemy должен использовать .value
             expected_solution=expected_solution,
             examples=examples_parsed,
             constraints=constraints_parsed,
@@ -618,7 +651,7 @@ async def add_single_task(
             starter_code=starter_code_parsed,
             topic=topic,
             tags=tags_parsed,
-            language=language_enum,
+            language=language_enum,  # Enum объект или None
             created_by=admin.id
         )
         

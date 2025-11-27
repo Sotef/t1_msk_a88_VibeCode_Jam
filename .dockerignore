@@ -1,13 +1,58 @@
+# Git
 .git
 .gitignore
+.github
+
+# Dependencies
 node_modules
-.next
-coverage
-dist
-*.log
+.pnpm-store
 backend/__pycache__
 backend/.mypy_cache
 backend/.pytest_cache
 backend/.venv
 **/__pycache__
+**/.venv
+**/venv
+
+# Build artifacts
+.next
+coverage
+dist
+build
+*.log
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+backend/.env
+app/.env.local
+
+# Testing
+coverage
+.nyc_output
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Documentation
+README.md
+docs
+*.md
+
+# Misc
+.DS_Store
+Thumbs.db
 
