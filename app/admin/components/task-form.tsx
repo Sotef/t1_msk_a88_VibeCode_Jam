@@ -32,7 +32,7 @@ interface TaskFormData {
   starter_code: string
   topic: string
   tags: string
-  language: "python" | "javascript" | "cpp" | ""
+  language: "python" | "javascript" | "cpp" | "none"
 }
 
 interface ValidationError {
@@ -95,7 +95,7 @@ export function TaskForm({ token, onSuccess, onCancel }: TaskFormProps) {
     starter_code: "",
     topic: "",
     tags: "",
-    language: "",
+    language: "none",
   })
 
   const validateJSON = useCallback((value: string, fieldName: string): boolean => {
@@ -223,7 +223,7 @@ export function TaskForm({ token, onSuccess, onCancel }: TaskFormProps) {
     if (formData.starter_code) formDataToSend.append("starter_code", formData.starter_code)
     if (formData.topic) formDataToSend.append("topic", formData.topic)
     if (formData.tags) formDataToSend.append("tags", formData.tags)
-    if (formData.language) formDataToSend.append("language", formData.language)
+    if (formData.language && formData.language !== "none") formDataToSend.append("language", formData.language)
 
     try {
       const res = await fetch(`${API_BASE}/api/admin/task-bank/single`, {
@@ -485,7 +485,7 @@ export function TaskForm({ token, onSuccess, onCancel }: TaskFormProps) {
                     <SelectValue placeholder="Не указан" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Не указан</SelectItem>
+                    <SelectItem value="none">Не указан</SelectItem>
                     <SelectItem value="python">Python</SelectItem>
                     <SelectItem value="javascript">JavaScript</SelectItem>
                     <SelectItem value="cpp">C++</SelectItem>

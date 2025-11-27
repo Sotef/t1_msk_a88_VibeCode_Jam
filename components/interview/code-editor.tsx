@@ -3,6 +3,15 @@
 import Editor, { type OnMount, type Monaco, loader } from "@monaco-editor/react"
 import { useRef, useState, useEffect } from "react"
 
+// Настраиваем Monaco Editor для использования локальных файлов вместо CDN
+if (typeof window !== "undefined") {
+  loader.config({
+    paths: {
+      vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.51.0/min/vs",
+    },
+  })
+}
+
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"

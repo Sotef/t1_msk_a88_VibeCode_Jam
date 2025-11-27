@@ -7,11 +7,12 @@ export function middleware(request: NextRequest) {
   // Content Security Policy для блокировки внешних ресурсов
   const csp = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // unsafe-eval для Monaco Editor
-    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net", // Monaco Editor CDN
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net", // Monaco Editor styles
     "img-src 'self' data:",
-    "font-src 'self'",
-    "connect-src 'self' http://localhost:8000 https://llm.t1v.scibox.tech",
+    "font-src 'self' data: https://cdn.jsdelivr.net", // Monaco Editor fonts
+    "connect-src 'self' http://localhost:8000 https://llm.t1v.scibox.tech https://cdn.jsdelivr.net", // Monaco Editor worker
+    "worker-src 'self' blob: https://cdn.jsdelivr.net", // Monaco Editor web workers
     "frame-src 'none'",
     "object-src 'none'",
     "base-uri 'self'",
