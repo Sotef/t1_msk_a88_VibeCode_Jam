@@ -173,12 +173,25 @@ async def generate_task(
                 previous_performance=request.previous_performance,
                 response_language=interview.task_language
             )
+            # Логируем успешную генерацию для отладки
+            logging.info(
+                f"Task generated successfully: id={task_data.get('title', 'N/A')}, "
+                f"has_description={bool(task_data.get('description'))}, "
+                f"has_examples={bool(task_data.get('examples'))}, "
+                f"has_test_cases={bool(task_data.get('test_cases'))}"
+            )
         except Exception as e:
             logging.error(f"Error generating task: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error generating task: {str(e)}. Please try again."
-            )
+            # Не выбрасываем ошибку, а возвращаем дефолтную задачу
+            task_data = {
+                "title": f"Task {request.task_number}",
+                "description": f"Произошла ошибка при генерации задачи. Пожалуйста, попробуйте еще раз или обратитесь к администратору. Ошибка: {str(e)[:100]}",
+                "task_type": "practical",
+                "examples": [],
+                "constraints": [],
+                "test_cases": [],
+                "starter_code": {},
+            }
     
     # Create task in database
     task = InterviewTask(
@@ -198,6 +211,14 @@ async def generate_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
+    
+    # Логируем финальный ответ для отладки
+    logging.info(
+        f"Returning task response: id={task.id}, title={task.title}, "
+        f"description_length={len(task.description)}, "
+        f"examples_count={len(task.examples or [])}, "
+        f"has_starter_code={bool(task.starter_code)}"
+    )
     
     return TaskResponse(
         id=task.id,
@@ -747,9 +768,23 @@ async def finish_interview(
             "clipboard_analysis": anti_cheat_summary.get("clipboard_analysis", [])
         }
         
-        # Generate final assessment
+        # Generate final assessment from technical LLM (coder)
         assessment = await scibox_client.generate_final_assessment(
             interview_data,
+            response_language=interview.task_language
+        )
+        
+        # Generate soft skills feedback from chat LLM
+        softskills_feedback = await scibox_client.generate_softskills_feedback(
+            chat_history=[
+                {"role": m.role, "content": m.content}
+                for m in chat_history
+            ],
+            interview_context={
+                "candidate_name": interview.candidate_name,
+                "direction": interview.direction,
+                "difficulty": interview.difficulty.value,
+            },
             response_language=interview.task_language
         )
         
@@ -763,6 +798,8 @@ async def finish_interview(
         interview.areas_for_improvement = assessment.get("areas_for_improvement", [])
         interview.recommendation = assessment.get("recommendation", "")
         interview.softskills_assessment = assessment.get("softskills_assessment", {})
+        interview.technical_feedback = assessment.get("technical_feedback", "")
+        interview.softskills_feedback = softskills_feedback
         interview.tasks_completed = len([t for t in tasks if t.submitted_code])
         interview.anti_cheat_flags = anti_cheat_summary.get("flags_count", 0)
         
@@ -806,6 +843,27 @@ async def get_feedback(interview_id: str, db: AsyncSession = Depends(get_db)):
             "Failed to fetch tasks"
         )
         tasks = tasks_result.scalars().all()
+        
+        # Calculate additional metrics
+        total_time_seconds = None
+        if interview.started_at and interview.finished_at:
+            total_time_seconds = int((interview.finished_at - interview.started_at).total_seconds())
+        
+        # Calculate average task time
+        completed_tasks_with_time = [t for t in tasks if t.submitted_at and t.started_at]
+        average_task_time_seconds = None
+        if completed_tasks_with_time:
+            total_task_time = sum(
+                int((t.submitted_at - t.started_at).total_seconds())
+                for t in completed_tasks_with_time
+            )
+            average_task_time_seconds = int(total_task_time / len(completed_tasks_with_time))
+        
+        # Aggregate task metrics
+        total_submission_attempts = sum(t.submission_attempts or 0 for t in tasks)
+        total_test_runs = sum(t.test_runs or 0 for t in tasks)
+        total_compilation_errors = sum(t.compilation_errors or 0 for t in tasks)
+        total_execution_errors = sum(t.execution_errors or 0 for t in tasks)
     
         return InterviewFeedback(
             interview_id=interview.id,
@@ -828,12 +886,25 @@ async def get_feedback(interview_id: str, db: AsyncSession = Depends(get_db)):
                     "code_quality": t.code_quality,
                     "efficiency": t.efficiency,
                     "correctness": t.correctness,
-                    "hints_used": t.hints_used
+                    "hints_used": t.hints_used,
+                    "time_spent_seconds": t.time_spent_seconds,
+                    "submission_attempts": t.submission_attempts or 0,
+                    "test_runs": t.test_runs or 0,
+                    "compilation_errors": t.compilation_errors or 0,
+                    "execution_errors": t.execution_errors or 0,
                 }
                 for t in tasks
             ],
             softskills_assessment=interview.softskills_assessment or {},
-            created_at=interview.finished_at or interview.created_at
+            created_at=interview.finished_at or interview.created_at,
+            total_time_seconds=total_time_seconds,
+            average_task_time_seconds=average_task_time_seconds,
+            total_submission_attempts=total_submission_attempts,
+            total_test_runs=total_test_runs,
+            total_compilation_errors=total_compilation_errors,
+            total_execution_errors=total_execution_errors,
+            technical_feedback=interview.technical_feedback,
+            softskills_feedback=interview.softskills_feedback,
         )
     except HTTPException:
         raise

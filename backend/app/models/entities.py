@@ -56,6 +56,8 @@ class Interview(Base):
     areas_for_improvement = Column(JSON, nullable=True)
     recommendation = Column(Text, nullable=True)
     softskills_assessment = Column(JSON, nullable=True)
+    technical_feedback = Column(Text, nullable=True)  # Развернутая обратная связь от LLM кодера
+    softskills_feedback = Column(Text, nullable=True)  # Развернутая обратная связь от LLM чата
     
     # Timestamps
     started_at = Column(DateTime, nullable=True)

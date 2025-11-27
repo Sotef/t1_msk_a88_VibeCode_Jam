@@ -6,21 +6,136 @@ AI‑симулятор технических интервью: фронтен�
 
 ## Архитектура
 
+### Диаграмма компонентов системы
+
+```mermaid
+graph TB
+    subgraph "Frontend Layer"
+        UI[Next.js Frontend<br/>React 19, TypeScript]
+        Admin[Admin Panel<br/>/admin]
+        Candidate[Interview Interface<br/>/]
+    end
+    
+    subgraph "Backend Layer"
+        API[FastAPI Backend<br/>REST API + SSE]
+        Router[API Routers<br/>interview, admin]
+        Services[Services Layer]
+        SciboxClient[Scibox Client<br/>LLM Integration]
+        CodeExecutor[Code Executor<br/>Docker Runner]
+        AntiCheat[Anti-Cheat Service<br/>Monitoring]
+    end
+    
+    subgraph "Data Layer"
+        DB[(PostgreSQL<br/>Interviews, Tasks,<br/>Chat, Metrics)]
+        Redis[(Redis<br/>Sessions, Cache)]
+    end
+    
+    subgraph "External Services"
+        SciboxAPI[Scibox LLM API<br/>Task Generation,<br/>Code Evaluation,<br/>Chat]
+        Docker[Docker Engine<br/>Code Execution<br/>Sandbox]
+    end
+    
+    UI --> API
+    Admin --> API
+    Candidate --> API
+    API --> Router
+    Router --> Services
+    Services --> SciboxClient
+    Services --> CodeExecutor
+    Services --> AntiCheat
+    Services --> DB
+    Services --> Redis
+    SciboxClient --> SciboxAPI
+    CodeExecutor --> Docker
+    AntiCheat --> DB
+    
+    style UI fill:#61dafb
+    style API fill:#009688
+    style DB fill:#336791
+    style SciboxAPI fill:#ff6b6b
+    style Docker fill:#0db7ed
+```
+
+### Описание компонентов
+
 | Компонент | Технологии | Назначение |
 |-----------|------------|------------|
-| **Фронтенд** | Next.js 16, React 19 | Интерфейс кандидата (страница `/`) и админ‑панель (`/admin`). Общение с бэкендом через REST/SSE. |
+| **Фронтенд** | Next.js 16, React 19 | Интерфейс кандидата (страница `/`) и админ‑панель (`/admin`). Общение с бэкендом через REST/SSE. |
 | **Бэкенд** | FastAPI, Pydantic, SQLAlchemy | API интервью, прокси к Scibox, анти‑чит, управление запуском кода. |
-| **База данных** | PostgreSQL 16 | Хранение интервью, заданий, сообщений чата, админов и событий анти‑чита. |
-| **Redis 7** | Подготовлен для кэша/сессий (в текущей конфигурации опционален). |
+| **База данных** | PostgreSQL 16 | Хранение интервью, заданий, сообщений чата, админов и событий анти‑чита. |
+| **Redis 7** | Подготовлен для кэша/сессий (в текущей конфигурации опционален). |
 | **Docker‑раннер** | Внутри контейнера backend запускаются `python:3.11-slim`, `node:20-slim`, `gcc:13` для проверки решений. |
 
-Структура репозитория:
+### Структура репозитория
 
 - `app/` — Next.js проект (кандидат и админка).
 - `components/` — UI‑компоненты, редактор, панели задач/чата.
 - `backend/app/` — Код FastAPI: `routers`, `services`, `models`.
 - `backend/alembic/` — миграции базы.
 - `docker-compose.yml` — описание всех сервисов (frontend, backend, postgres, redis).
+
+### Процесс выполнения типичного интервью
+
+```mermaid
+sequenceDiagram
+    participant U as Пользователь
+    participant F as Frontend
+    participant B as Backend API
+    participant S as Scibox LLM
+    participant D as PostgreSQL
+    participant E as Code Executor
+    
+    U->>F: Заполнение формы регистрации
+    F->>B: POST /api/interview/start
+    B->>D: Создание записи Interview
+    B->>S: Генерация первой задачи
+    S-->>B: JSON с задачей
+    B->>D: Сохранение задачи
+    B-->>F: Interview + Task
+    F-->>U: Отображение задачи и IDE
+    
+    loop Для каждой задачи
+        U->>F: Написание кода
+        U->>F: Запуск тестов (опционально)
+        F->>B: POST /api/interview/run-tests
+        B->>E: Выполнение кода в Docker
+        E-->>B: Результаты тестов
+        B-->>F: Test results
+        
+        U->>F: Запрос подсказки (опционально)
+        F->>B: POST /api/interview/hint
+        B->>S: Генерация подсказки
+        S-->>B: Hint text
+        B-->>F: Hint
+        
+        U->>F: Отправка решения
+        F->>B: POST /api/interview/submit-code
+        B->>E: Выполнение + валидация
+        E-->>B: Execution result
+        B->>S: Оценка кода LLM
+        S-->>B: Evaluation (score, feedback)
+        B->>D: Сохранение результата
+        B-->>F: Evaluation result
+        
+        alt Есть следующая задача
+            B->>S: Генерация следующей задачи
+            S-->>B: Next task
+            B-->>F: New task
+        end
+    end
+    
+    U->>F: Завершение интервью
+    F->>B: POST /api/interview/finish
+    B->>S: Генерация финального отчета
+    S-->>B: Final assessment
+    B->>D: Обновление Interview (COMPLETED)
+    B-->>F: Interview completed
+    F->>B: GET /api/interview/feedback/{id}
+    B->>D: Получение всех метрик
+    D-->>B: Interview data + metrics
+    B-->>F: Feedback report
+    F-->>U: Отображение отчета с метриками
+```
 
 ---
 

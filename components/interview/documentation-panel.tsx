@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -33,10 +33,36 @@ export function DocumentationPanel({ language, isOpen, onClose }: DocumentationP
 
   const selectedDoc = selectedFunction ? getDocumentation(lang, selectedFunction) : null
 
+  // Закрытие по Escape
+  useEffect(() => {
+    if (!isOpen) return
+    
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose()
+      }
+    }
+    
+    document.addEventListener("keydown", handleEscape)
+    return () => document.removeEventListener("keydown", handleEscape)
+  }, [isOpen, onClose])
+
   if (!isOpen) return null
 
   return (
-    <div className="fixed right-0 top-0 bottom-0 w-96 bg-card border-l shadow-2xl z-50 flex flex-col">
+    <>
+      {/* Overlay */}
+      <div 
+        className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      {/* Modal Panel */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+        <div 
+          className="bg-card border shadow-2xl rounded-lg w-full max-w-4xl h-[85vh] max-h-[800px] flex flex-col pointer-events-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3 bg-secondary/30">
         <div className="flex items-center gap-2">
@@ -61,9 +87,9 @@ export function DocumentationPanel({ language, isOpen, onClose }: DocumentationP
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Function List */}
-        <div className="w-1/2 border-r bg-muted/30">
+        <div className="w-1/2 border-r bg-muted/30 flex-shrink-0 overflow-hidden">
           <ScrollArea className="h-full">
             <div className="p-2 space-y-1">
               {filteredFunctions.length === 0 ? (
@@ -90,9 +116,9 @@ export function DocumentationPanel({ language, isOpen, onClose }: DocumentationP
         </div>
 
         {/* Documentation Content */}
-        <div className="w-1/2">
+        <div className="w-1/2 flex-shrink-0 overflow-hidden">
           <ScrollArea className="h-full">
-            <div className="p-4">
+            <div className="p-4 max-h-full overflow-y-auto">
               {selectedDoc ? (
                 <div className="space-y-4">
                   <div>
@@ -154,8 +180,9 @@ export function DocumentationPanel({ language, isOpen, onClose }: DocumentationP
             </div>
           </ScrollArea>
         </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

@@ -163,6 +163,15 @@ class InterviewFeedback(BaseModel):
     detailed_task_results: List[dict]
     softskills_assessment: dict
     created_at: datetime
+    # Дополнительные метрики
+    total_time_seconds: Optional[int] = None  # Общее время интервью
+    average_task_time_seconds: Optional[int] = None  # Среднее время на задачу
+    total_submission_attempts: Optional[int] = None  # Общее количество попыток отправки
+    total_test_runs: Optional[int] = None  # Общее количество запусков тестов
+    total_compilation_errors: Optional[int] = None  # Общее количество ошибок компиляции
+    total_execution_errors: Optional[int] = None  # Общее количество ошибок выполнения
+    technical_feedback: Optional[str] = None  # Развернутая обратная связь от LLM кодера
+    softskills_feedback: Optional[str] = None  # Развернутая обратная связь от LLM чата
 
 
 class InterviewStatusResponse(BaseModel):

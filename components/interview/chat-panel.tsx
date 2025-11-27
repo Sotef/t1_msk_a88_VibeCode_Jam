@@ -89,7 +89,7 @@ export function ChatPanel({ messages, onSendMessage, isLoading, isStreaming }: C
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Напишите сообщение..."
+              placeholder="Напишите сообщение... (можно спрашивать документацию)"
               maxHeight={120}
               className="max-h-[120px] overflow-y-auto"
             />

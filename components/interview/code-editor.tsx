@@ -505,8 +505,8 @@ export function CodeEditor({
         </div>
       </div>
 
-      <div className="relative flex-1">
-        {/* Панель документации */}
+      <div className="relative flex-1 overflow-hidden">
+        {/* Панель документации - теперь плавающее модальное окно */}
         <DocumentationPanel
           language={language}
           isOpen={isDocPanelOpen}

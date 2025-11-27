@@ -6,15 +6,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  webpack: (config, { isServer }) => {
-    // Monaco Editor работает только на клиенте
-    if (!isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-      }
-    }
-    return config
-  },
+  // Turbopack конфигурация (Next.js 16 использует Turbopack по умолчанию)
+  turbopack: {},
 }
 
 export default nextConfig

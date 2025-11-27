@@ -124,10 +124,21 @@ class SciboxClient:
             "Each test case must have: input, expected output, and optionally explanation.\n"
             "Test cases should verify that the code handles ALL edge cases correctly.\n"
             "Minimum 5 test cases for algorithm tasks, including at least 3 edge cases.\n\n"
-            "Return JSON with: title, description, task_type, examples "
-            "(list of {input, output, explanation}), constraints (list), "
-            "test_cases (MANDATORY for algorithm tasks - must include comprehensive edge cases), "
-            "starter_code (dict keyed by language)."
+            "CRITICAL JSON FORMAT REQUIREMENTS:\n"
+            "You MUST return a valid JSON object with EXACTLY this structure:\n"
+            "{\n"
+            '  "title": "string",\n'
+            '  "description": "string",\n'
+            '  "task_type": "algorithm" | "system_design" | "code_review" | "debugging" | "practical",\n'
+            '  "examples": [{"input": "string", "output": "string", "explanation": "string"}],\n'
+            '  "constraints": ["string1", "string2", ...],\n'
+            '  "test_cases": [{"name": "string", "input": any, "expected_output": any}],\n'
+            '  "starter_code": "string (code as plain text, NOT a dict)"\n'
+            "}\n\n"
+            "IMPORTANT: starter_code must be a STRING containing the code, NOT a dictionary. "
+            "The code should be for the specified programming language. "
+            "Escape newlines as \\n and quotes as \\\" in the JSON string.\n\n"
+            "Return ONLY valid JSON, no additional text before or after."
         )
         system_prompt = self._append_language_instruction(system_prompt, response_language)
         perf_hint = (
@@ -150,7 +161,7 @@ class SciboxClient:
             ],
             model=settings.model_coder,
             temperature=0.8,
-            max_tokens=1024,
+            max_tokens=4096,  # Увеличено до 4096 для очень больших задач с множеством тест-кейсов
             stream=False,
             session_context={
                 "purpose": "task_generation",
@@ -169,9 +180,20 @@ class SciboxClient:
         if parsed:
             return parsed
         
-        # Логируем ошибку для отладки
+        # Попытка извлечь хотя бы базовые поля из обрезанного JSON
+        fallback_task = self._extract_partial_task(content, task_number)
+        if fallback_task:
+            logging.warning(
+                f"Using partial task data due to JSON parsing error. "
+                f"Task: {task_number}, Direction: {direction}, Difficulty: {difficulty}"
+            )
+            return fallback_task
+        
+        # Логируем ошибку для отладки (полный ответ или первые 2000 символов)
+        log_length = min(len(content), 2000)
         logging.error(
-            f"Failed to parse task JSON. Raw response (first 500 chars): {content[:500]}\n"
+            f"Failed to parse task JSON. Raw response (first {log_length} chars): {content[:log_length]}\n"
+            f"Full response length: {len(content)} chars\n"
             f"Task: {task_number}, Direction: {direction}, Difficulty: {difficulty}"
         )
         return {
@@ -316,8 +338,14 @@ class SciboxClient:
                 )
 
         system_prompt = (
-            "You are an empathetic interviewer focused on soft skills. "
-            "Ask follow-up questions, maybe ask about the candidate's experience(if context appropriate), if it is not clear from the previous answers ask about it, reference previous answers, and keep responses concise (2-3 sentences)."
+            "You are an empathetic interviewer focused on soft skills and technical guidance. "
+            "Ask follow-up questions, maybe ask about the candidate's experience(if context appropriate), if it is not clear from the previous answers ask about it, reference previous answers, and keep responses concise (2-3 sentences).\n\n"
+            "IMPORTANT RULES:\n"
+            "- You can provide documentation, explanations of programming concepts, and help with understanding language features.\n"
+            "- You CANNOT provide solutions to the current task, complete code implementations, or hints that directly solve the problem.\n"
+            "- If asked for documentation, provide clear explanations of functions, methods, or concepts without solving the task.\n"
+            "- If asked for help with the task, guide the candidate to think about the problem, but never give the solution.\n"
+            "- Redirect solution requests to using hints (mention that hints are available via the hint button)."
         )
         system_prompt = self._append_language_instruction(system_prompt, response_language)
 
@@ -345,7 +373,8 @@ class SciboxClient:
         system_prompt = (
             "You are a senior hiring manager summarizing an AI-assisted interview.\n"
             "Return JSON with: overall_score, technical_score, softskills_score, strengths (list), "
-            "areas_for_improvement (list), recommendation (string), softskills_assessment (dict)."
+            "areas_for_improvement (list), recommendation (string), softskills_assessment (dict), "
+            "technical_feedback (string - detailed feedback from technical LLM about code quality and problem-solving)."
         )
         system_prompt = self._append_language_instruction(system_prompt, response_language)
         user_prompt = (
@@ -360,7 +389,7 @@ class SciboxClient:
             ],
             model=settings.model_coder,
             temperature=0.3,
-            max_tokens=1024,
+            max_tokens=1536,  # Увеличено для развернутой обратной связи
             stream=False,
             session_context=interview_data,
         )
@@ -379,7 +408,55 @@ class SciboxClient:
             "areas_for_improvement": [],
             "recommendation": "Assessment unavailable",
             "softskills_assessment": {},
+            "technical_feedback": "",
         }
+    
+    async def generate_softskills_feedback(
+        self,
+        chat_history: list,
+        interview_context: dict,
+        response_language: str | None = None,
+    ) -> str:
+        """Генерирует развернутую обратную связь от LLM чата о soft skills"""
+        system_prompt = (
+            "You are an expert interviewer specializing in soft skills assessment. "
+            "Based on the conversation history, provide detailed feedback about the candidate's "
+            "communication skills, problem-solving approach, teamwork, and overall soft skills.\n\n"
+            "Provide constructive feedback in 3-5 sentences, highlighting both strengths and areas for improvement. "
+            "Be specific and reference examples from the conversation when possible."
+        )
+        system_prompt = self._append_language_instruction(system_prompt, response_language)
+        
+        # Формируем контекст из истории чата
+        chat_context = ""
+        if chat_history:
+            chat_context = "Conversation history:\n"
+            for msg in chat_history[-10:]:  # Последние 10 сообщений
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                chat_context += f"{role.capitalize()}: {content}\n"
+        
+        user_prompt = (
+            f"{chat_context}\n\n"
+            f"Candidate: {interview_context.get('candidate_name', 'Unknown')}\n"
+            f"Direction: {interview_context.get('direction', 'Unknown')}\n\n"
+            "Provide detailed soft skills feedback based on the conversation above."
+        )
+
+        response = await self.chat_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            model=settings.model_chat,
+            temperature=0.5,
+            max_tokens=512,
+            stream=False,
+            session_context=interview_context,
+        )
+
+        content = response["choices"][0]["message"]["content"]
+        return self._filter_reasoning_tags(content)
 
     async def detect_ai_code(self, code: str) -> dict:
         system_prompt = (
@@ -718,15 +795,168 @@ class SciboxClient:
         # Не трогаем пробелы - они уже корректные от API
         return text
 
+    def _extract_partial_task(self, raw: str, task_number: int) -> Optional[dict]:
+        """Извлекает хотя бы базовые поля задачи из обрезанного JSON"""
+        import re
+        try:
+            # Ищем title
+            title_match = re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
+            title = title_match.group(1).replace('\\"', '"').replace('\\n', '\n') if title_match else f"Task {task_number}"
+            
+            # Ищем description - более сложный парсинг для многострочных строк
+            # Ищем от "description": до следующей запятой или закрывающей скобки
+            desc_pattern = r'"description"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"'
+            desc_match = re.search(desc_pattern, raw, re.DOTALL)
+            if not desc_match:
+                # Пробуем найти description до обрезания (до конца строки или до следующего поля)
+                desc_start = raw.find('"description"')
+                if desc_start != -1:
+                    desc_value_start = raw.find('"', desc_start + 13) + 1
+                    if desc_value_start > 0:
+                        # Ищем закрывающую кавычку, учитывая экранирование
+                        desc_end = desc_value_start
+                        i = desc_value_start
+                        while i < len(raw):
+                            if raw[i] == '"' and raw[i-1] != '\\':
+                                desc_end = i
+                                break
+                            i += 1
+                        if desc_end > desc_value_start:
+                            description = raw[desc_value_start:desc_end].replace('\\"', '"').replace('\\n', '\n')
+                        else:
+                            # Если не нашли закрывающую кавычку, берем до конца или до следующего поля
+                            next_field = min(
+                                raw.find('",', desc_value_start),
+                                raw.find('"task_type"', desc_value_start),
+                                raw.find('"examples"', desc_value_start),
+                                len(raw)
+                            )
+                            description = raw[desc_value_start:next_field].replace('\\"', '"').replace('\\n', '\n')
+                    else:
+                        description = "Описание задачи недоступно."
+                else:
+                    description = "Описание задачи недоступно."
+            else:
+                description = desc_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+            
+            # Ищем task_type
+            type_match = re.search(r'"task_type"\s*:\s*"([^"]+)"', raw)
+            task_type = type_match.group(1) if type_match else "practical"
+            
+            # Пытаемся извлечь examples (хотя бы частично)
+            examples = []
+            examples_match = re.search(r'"examples"\s*:\s*\[(.*?)\]', raw, re.DOTALL)
+            if examples_match:
+                examples_text = examples_match.group(1)
+                # Простая попытка найти объекты примеров
+                example_objs = re.findall(r'\{[^{}]*"input"[^{}]*"output"[^{}]*\}', examples_text, re.DOTALL)
+                for ex in example_objs[:3]:  # Максимум 3 примера
+                    try:
+                        ex_parsed = json.loads(ex)
+                        examples.append(ex_parsed)
+                    except:
+                        pass
+            
+            # Пытаемся извлечь constraints
+            constraints = []
+            constraints_match = re.search(r'"constraints"\s*:\s*\[(.*?)\]', raw, re.DOTALL)
+            if constraints_match:
+                constraints_text = constraints_match.group(1)
+                constraint_items = re.findall(r'"([^"]+)"', constraints_text)
+                constraints = constraint_items[:5]  # Максимум 5 ограничений
+            
+            # Пытаемся извлечь starter_code (может быть строкой)
+            starter_code = {}
+            starter_code_match = re.search(r'"starter_code"\s*:\s*"((?:[^"\\]|\\.|\\n)*)"', raw, re.DOTALL)
+            if starter_code_match:
+                code_str = starter_code_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+                # Определяем язык по task_type или используем python по умолчанию
+                default_lang = "python"  # Можно улучшить определение языка
+                starter_code = {default_lang: code_str}
+            
+            return {
+                "title": title,
+                "description": description,
+                "task_type": task_type,
+                "examples": examples,
+                "constraints": constraints,
+                "test_cases": [],  # Не пытаемся парсить обрезанные test_cases
+                "starter_code": starter_code,
+            }
+        except Exception as e:
+            logging.warning(f"Failed to extract partial task: {e}")
+            return None
+    
     def _extract_json_payload(self, raw: str) -> Optional[dict]:
         # Фильтруем reasoning теги перед парсингом
         raw = self._filter_reasoning_tags(raw)
         start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start != -1 and end > start:
+        if start == -1:
+            return None
+        
+        # Пытаемся найти закрывающую скобку
+        end = raw.rfind("}")
+        if end == -1 or end <= start:
+            # Если закрывающей скобки нет, пытаемся восстановить JSON
+            # Ищем последнюю закрывающую скобку массива или объекта
+            bracket_count = 0
+            brace_count = 0
+            last_valid_pos = start
+            in_string = False
+            escape_next = False
+            
+            for i in range(start, len(raw)):
+                char = raw[i]
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                    
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0:
+                        last_valid_pos = i + 1
+                elif char == '[':
+                    bracket_count += 1
+                elif char == ']':
+                    bracket_count -= 1
+            
+            # Если нашли валидную позицию, используем её
+            if last_valid_pos > start:
+                end = last_valid_pos
+            else:
+                # Пытаемся добавить закрывающие скобки
+                missing_braces = brace_count
+                missing_brackets = bracket_count
+                raw = raw[:last_valid_pos] + ']' * missing_brackets + '}' * missing_braces
+                end = len(raw)
+        else:
+            end = end + 1
+        
+        if end > start:
             try:
                 return json.loads(raw[start:end])
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                # Пытаемся найти JSON внутри текста более точно
+                # Ищем вложенные структуры
+                try:
+                    # Пробуем найти JSON объект с помощью регулярных выражений
+                    import re
+                    json_match = re.search(r'\{.*\}', raw[start:], re.DOTALL)
+                    if json_match:
+                        return json.loads(json_match.group(0))
+                except:
+                    pass
+                logging.warning(f"JSON parse error: {e}. Attempted to parse: {raw[start:min(start+200, end)]}...")
                 return None
         return None
 

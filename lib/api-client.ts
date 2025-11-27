@@ -84,6 +84,7 @@ export const apiClient = {
   },
 
   async generateTask(interview_id: string, task_number: number, previous_performance?: number): Promise<Task> {
+    console.log(`[API] Generating task ${task_number} for interview ${interview_id}`)
     const res = await fetch(`${API_BASE}/api/interview/generate-task`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -91,12 +92,24 @@ export const apiClient = {
     })
     if (!res.ok) {
       const errorText = await res.text()
-      console.error("Failed to generate task:", res.status, errorText)
+      console.error("[API] Failed to generate task:", res.status, errorText)
       throw new Error(`Failed to generate task: ${res.status} ${errorText}`)
     }
     const data = await res.json()
+    console.log("[API] Task received:", { 
+      id: data?.id, 
+      title: data?.title, 
+      hasDescription: !!data?.description,
+      hasStarterCode: !!data?.starter_code 
+    })
     if (!data) {
+      console.error("[API] Empty response from generate task")
       throw new Error("Empty response from generate task")
+    }
+    // Проверяем минимальные требования для задачи
+    if (!data.id || !data.title) {
+      console.error("[API] Invalid task data:", data)
+      throw new Error("Invalid task data: missing id or title")
     }
     return data
   },

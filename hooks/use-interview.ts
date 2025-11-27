@@ -34,17 +34,24 @@ export function useInterview() {
 
       // Generate first task
       try {
+        console.log("[use-interview] Generating first task...")
         const task = await apiClient.generateTask(result.interview_id, 1)
-        if (task) {
+        console.log("[use-interview] Task received:", { 
+          id: task?.id, 
+          title: task?.title,
+          hasDescription: !!task?.description 
+        })
+        if (task && task.id && task.title) {
+          console.log("[use-interview] Setting current task")
           setCurrentTask(task)
           setCode(task.starter_code?.[data.language] || getDefaultCode(data.language))
         } else {
-          console.error("Failed to generate task: task is null")
+          console.error("[use-interview] Failed to generate task: task is null or invalid", task)
           // Устанавливаем дефолтный код, чтобы пользователь мог работать
           setCode(getDefaultCode(data.language))
         }
       } catch (error) {
-        console.error("Error generating first task:", error)
+        console.error("[use-interview] Error generating first task:", error)
         // Устанавливаем дефолтный код, чтобы пользователь мог работать
         setCode(getDefaultCode(data.language))
       }
@@ -141,15 +148,22 @@ export function useInterview() {
       const avgScore =
         taskScores.length > 0 ? taskScores.reduce((a: number, b: number) => a + b, 0) / taskScores.length : undefined
 
+      console.log(`[use-interview] Generating next task ${nextNum}...`)
       const task = await apiClient.generateTask(interview.interview_id, nextNum, avgScore)
+      console.log("[use-interview] Next task received:", { 
+        id: task?.id, 
+        title: task?.title,
+        hasDescription: !!task?.description 
+      })
       
-      if (task) {
+      if (task && task.id && task.title) {
+        console.log("[use-interview] Setting next task")
         setCurrentTask(task)
         setTaskNumber(nextNum)
         setCode(task.starter_code?.[interview.language] || getDefaultCode(interview.language))
         return task
       } else {
-        console.error("Failed to generate task: task is null")
+        console.error("[use-interview] Failed to generate task: task is null or invalid", task)
         // Устанавливаем дефолтный код, чтобы пользователь мог работать
         setCode(getDefaultCode(interview.language))
         return null
