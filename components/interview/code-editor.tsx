@@ -104,33 +104,42 @@ export function CodeEditor({
         
         if (isMounted) {
           setIsThemeReady(true)
-          if (timeoutId) clearTimeout(timeoutId)
+          if (timeoutId) {
+            clearTimeout(timeoutId)
+            timeoutId = null
+          }
         }
       } catch (error) {
         console.error("Failed to initialize Monaco theme:", error)
         // Устанавливаем isThemeReady в true даже при ошибке, чтобы показать редактор
         if (isMounted) {
           setIsThemeReady(true)
-          if (timeoutId) clearTimeout(timeoutId)
+          if (timeoutId) {
+            clearTimeout(timeoutId)
+            timeoutId = null
+          }
         }
       }
     }
 
     // Таймаут на случай, если loader.init() зависнет
     timeoutId = setTimeout(() => {
-      if (!isThemeReady && isMounted) {
+      if (isMounted && !isThemeReady) {
         console.warn("Monaco theme initialization timeout, showing editor anyway")
         setIsThemeReady(true)
       }
-    }, 5000) // 5 секунд максимум
+    }, 3000) // 3 секунды максимум (уменьшено с 5)
 
     initTheme()
 
     return () => {
       isMounted = false
-      if (timeoutId) clearTimeout(timeoutId)
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
     }
-  }, [])
+  }, []) // Пустой массив зависимостей - выполняется только при монтировании
   
   // Обновляем previousCodeRef при изменении code извне
   useEffect(() => {
@@ -495,7 +504,12 @@ export function CodeEditor({
           onClose={() => setIsDocPanelOpen(false)}
         />
         {!isThemeReady ? (
-          <Skeleton className="h-full w-full" />
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center space-y-2">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Загрузка редактора...</p>
+            </div>
+          </div>
         ) : (
           <Editor
             value={code}
